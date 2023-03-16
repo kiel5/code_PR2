@@ -28,6 +28,7 @@
 #include "string.h"
 #include "stdlib.h"
 #include "stdbool.h"
+#include "ESPDataLogger.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -70,7 +71,7 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-#define IN1Port GPIOA
+#define IN1Port GPIOA             // khai báo chân điều khiển động cơ
 #define IN1Pin  GPIO_PIN_0
 #define IN2Port GPIOA
 #define IN2Pin  GPIO_PIN_1
@@ -89,7 +90,7 @@ static void MX_USART1_UART_Init(void);
 #define IN8Pin  GPIO_PIN_15
 
 
-#define stepsperrev 2048
+#define stepsperrev 2048    // số bước quay 1 vòng
 
 void delay(uint16_t us){
 	__HAL_TIM_SET_COUNTER(&htim1,0);
@@ -106,7 +107,7 @@ void ResetPin (GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
 	HAL_GPIO_WritePin(GPIOx, GPIO_Pin, GPIO_PIN_RESET);
 }
 
-void stepper_wave_drive (int step)
+void stepper_wave_drive (int step)  // hàm điều khiển động cơ quay theo bước
 {
 	switch (step){
 		case 0:
@@ -138,7 +139,7 @@ void stepper_wave_drive (int step)
 
 		}
 }
-void stepper_wave_drive1 (int step)
+void stepper_wave_drive1 (int step)   //hàm điều khiển động cơ quay theo bước
 {
 	switch (step){
 		case 0:
@@ -170,12 +171,12 @@ void stepper_wave_drive1 (int step)
 
 		}
 }
-void stepper_set_rpm (int rpm)
+void stepper_set_rpm (int rpm)         // set độ trễ của mỗi bước( hay tốc độ quay của động cơ)
 {
 	delay(60000000/stepsperrev/rpm);
 }
 
-void stepper_step_angle (int angle, int direction, int rpm)
+void stepper_step_angle (int angle, int direction, int rpm) // hàm điều khiển động cơ quay theo góc
 {
 	float anglepersequence = 0.703125;  // 360 = 512 sequences
 	int numberofsequences = (int) (angle/anglepersequence);
@@ -202,7 +203,7 @@ void stepper_step_angle (int angle, int direction, int rpm)
 		}
 	}
 }
-void stepper_step_angle1 (int angle, int direction, int rpm)
+void stepper_step_angle1 (int angle, int direction, int rpm) 		// hàm điều khiển động cơ quay theo góc
 {
 	float anglepersequence = 0.703125;  // 360 = 512 sequences
 	int numberofsequences = (int) (angle/anglepersequence);
@@ -232,7 +233,7 @@ void stepper_step_angle1 (int angle, int direction, int rpm)
 float currentAngle =0;
 float angle;
 
-void Stepper_rotate (int angle, int rpm)
+void Stepper_rotate (int angle, int rpm)          // tính góc động cơ đã quay
 {
 	int changeinangle = 0;
 	changeinangle = angle-currentAngle;
@@ -262,16 +263,17 @@ char buff8[16];
 char buff9[16];
 uint8_t rx[15]={0};
 uint8_t data[15]="\nhello kien";
+uint8_t flag=0;
 
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-  UNUSED(huart);
-  if(huart->Instance== USART1){
-
-	  HAL_UART_Receive_IT(huart, rx, sizeof(rx));
-  }
-}
+//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+//{
+//  UNUSED(huart);
+//  if(huart->Instance== USART1){
+//
+//	  HAL_UART_Receive_IT(huart, rx, sizeof(rx));
+//  }
+//}
 
 /* USER CODE END 0 */
 
@@ -311,32 +313,33 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   lcd_init();
-  HAL_UART_Receive_IT(&huart1, rx, sizeof(rx));
+ // HAL_UART_Receive_IT(&huart1, rx, sizeof(rx));
   HAL_TIM_Base_Start(&htim1);  // khởi tạo hàm-=timer
+
+  ESP_Init("iPhone","12345678");
+  uint32_t time=HAL_GetTick();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-//for(int i=0; i<512;i++){
-//	  for(int i=0;i<4;i++){
-//		  stepper_wave_drive(i);
-//		  stepper_set_rpm(12);
-//	  }
-//
-//}
-//  HAL_Delay(100);
-//stepper_step_angle(45, 0, 10);
+
   while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  /* adc*/
 	  //HAL_UART_Transmit(&huart1, data, sizeof(data), 100);
-	  HAL_ADC_Start(&hadc1);
+
+	  HAL_ADC_Start(&hadc1);                   // đọc giá trị ldr
 	  HAL_ADC_PollForConversion(&hadc1, 300);
 	  adc_ldr7 =HAL_ADC_GetValue(&hadc1);
 	  V_ldr7=(float)((adc_ldr7/4095.00)*5);
+
+	   if (HAL_GetTick() - time >= 20000){     // gửi dữ liệu lên cloud sau mỗi 20s
+
+		   ESP_Send_Data("ETVL3RB9PHFN259M", 1, adc_ldr7);
+		   time = HAL_GetTick();
+	   }
 	  HAL_ADC_PollForConversion(&hadc1, 300);
 	  adc_ldr8 =HAL_ADC_GetValue(&hadc1);
 	  V_ldr8=(float)((adc_ldr8/4095.00)*5);
@@ -346,15 +349,14 @@ int main(void)
 	  sprintf(buff7,"adc7_value: %d",adc_ldr7);
    	  sprintf(buff8,"adc8_value: %d",adc_ldr8);
 	  sprintf(buff9,"adc9_value: %d",adc_ldr9);
-      lcd_put_cur(0, 0);
+      lcd_put_cur(0, 0);						// hiển thi lcd
 	  lcd_send_string(buff7);
 	  lcd_put_cur(1, 0);
 	  lcd_send_string(buff8);
-	  //HAL_UART_Transmit(&huart1, (uint8_t*)buff7, sizeof(buff7), 100);
 	  HAL_ADC_Stop(&hadc1);
 
 
-
+// điều khiển động cơ
 		  if(adc_ldr7 > adc_ldr8 && (adc_ldr7- adc_ldr8)>100){
 			  stepper_step_angle(18, 0,13);
 		  }
@@ -371,6 +373,9 @@ int main(void)
 		  }
 
   }
+
+
+
   /* USER CODE END 3 */
 }
 
